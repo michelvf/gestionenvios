@@ -1,0 +1,260 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %} |
+Proveedores Internos
+{% endblock %}
+
+{% block content %}
+<div class="row mb-3">
+    <div class="col">
+        <h3>Proveedores Internos</h3>
+    </div>
+    <div class="col-auto">
+        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#proveedorModal">
+            Nuevo Proveedor
+        </button>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <table id="proveedoresTable" class="table table-striped table-hover">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Nombre</th>
+                    <th>Celular</th>
+                    <th>Dirección</th>
+                    <th>Correo</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Los datos se cargarán mediante JavaScript -->
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Modal para Crear/Editar Proveedor -->
+<div class="modal fade" id="proveedorModal" tabindex="-1" aria-labelledby="proveedorModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="proveedorModalLabel">Nuevo Proveedor</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="proveedorForm">
+                    {% csrf_token %}
+                    <input type="hidden" id="proveedorId" value="">
+                    
+                    <div class="mb-3">
+                        <label for="nombre" class="form-label">Nombre</label>
+                        <input type="text" class="form-control" id="nombre" name="nombre" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="celular" class="form-label">Celular</label>
+                        <input type="text" class="form-control" id="celular" name="celular" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="direccion" class="form-label">Dirección</label>
+                        <input type="text" class="form-control" id="direccion" name="direccion" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="correo" class="form-label">Correo</label>
+                        <input type="email" class="form-control" id="correo" name="correo" required>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary" id="saveProveedor">Guardar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de Confirmación para Eliminar -->
+<div class="modal fade" id="deleteModal" tabindex="-1" aria-labelledby="deleteModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="deleteModalLabel">Confirmar Eliminación</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>¿Está seguro que desea eliminar este proveedor?</p>
+                <input type="hidden" id="deleteId" value="">
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-danger" id="confirmDelete">Eliminar</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block js %}
+<script>
+    let dataTable;
+    const proveedorModal = new bootstrap.Modal(document.getElementById('proveedorModal'));
+    const deleteModal = new bootstrap.Modal(document.getElementById('deleteModal'));
+    
+    // Inicializar DataTable
+    $(document).ready(function() {
+        dataTable = $('#proveedoresTable').DataTable({
+            language: {
+                url: '{% static "vendors/datatables/es-ES.json" %}'
+            },
+            responsive: true,
+            columns: [
+                { data: 'id' },
+                { data: 'nombre' },
+                { data: 'celular' },
+                { data: 'direccion' },
+                { data: 'correo' },
+                { 
+                    data: null,
+                    render: function(data, type, row) {
+                        return `
+                            <button class="btn btn-sm btn-warning edit-btn" data-id="${row.id}">Editar</button>
+                            <button class="btn btn-sm btn-danger delete-btn" data-id="${row.id}">Eliminar</button>
+                        `;
+                    }
+                }
+            ]
+        });
+        
+        // Cargar datos iniciales
+        loadProveedores();
+        
+        // Evento para guardar proveedor
+        $('#saveProveedor').click(saveProveedor);
+        
+        // Evento para editar proveedor
+        $('#proveedoresTable').on('click', '.edit-btn', function() {
+            const id = $(this).data('id');
+            editProveedor(id);
+        });
+        
+        // Evento para eliminar proveedor
+        $('#proveedoresTable').on('click', '.delete-btn', function() {
+            const id = $(this).data('id');
+            $('#deleteId').val(id);
+            deleteModal.show();
+        });
+        
+        // Confirmar eliminación
+        $('#confirmDelete').click(function() {
+            const id = $('#deleteId').val();
+            deleteProveedor(id);
+        });
+        
+        // Limpiar modal al abrir para nuevo proveedor
+        $('#proveedorModal').on('show.bs.modal', function(event) {
+            if (!$(event.relatedTarget).hasClass('edit-btn')) {
+                $('#proveedorForm').trigger('reset');
+                $('#proveedorId').val('');
+                $('#proveedorModalLabel').text('Nuevo Proveedor');
+            }
+        });
+    });
+    
+    // Función para cargar proveedores
+    function loadProveedores() {
+        //showLoading();
+        fetch ('/api/proveedores/')
+            .then(handleResponse)
+            .then(data => {
+                dataTable.clear();
+                dataTable.rows.add(data.results);
+                dataTable.draw();
+                // hideLoading();
+            })
+            .catch(handleFetchError);
+    }
+    
+    // Función para guardar proveedor (crear o actualizar)
+    function saveProveedor() {
+        const id = $('#proveedorId').val();
+        const formData = {
+            nombre: $('#nombre').val(),
+            celular: $('#celular').val(),
+            direccion: $('#direccion').val(),
+            correo: $('#correo').val()
+        };
+        
+        // showLoading();
+        
+        const url = id ? `/api/proveedores/${id}/` : '/api/proveedores/';
+        const method = id ? 'PUT' : 'POST';
+        
+        fetch(url, {
+            method: method,
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCSRFToken()
+            },
+            body: JSON.stringify(formData)
+        })
+        .then(handleResponse)
+        .then(data => {
+            proveedorModal.hide();
+            loadProveedores();
+            toastr.success(id ? 'Proveedor actualizado con éxito' : 'Proveedor creado con éxito');
+        })
+        .catch(handleFetchError);
+    }
+    
+    // Función para editar proveedor
+    function editProveedor(id) {
+        // showLoading();
+        fetch(`/api/proveedores/${id}/`)
+            .then(handleResponse)
+            .then(data => {
+                // console.log(`llegó el dato: ${data.nombre}`);
+                proveedorModal.show();
+                $('#proveedorId').val(data.id);
+                $('#nombre').val(data.nombre);
+                $('#celular').val(data.celular);
+                $('#direccion').val(data.direccion);
+                $('#correo').val(data.correo);
+                
+                $('#proveedorModalLabel').text('Editar Proveedor');
+                // hideLoading();
+            })
+            .catch(handleFetchError);
+    }
+    
+    // Función para eliminar proveedor
+    function deleteProveedor(id) {
+        // showLoading();
+        fetch(`/api/proveedores/${id}/`, {
+            method: 'DELETE',
+            headers: {
+                'X-CSRFToken': getCSRFToken()
+            }
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Error al eliminar');
+            }
+            deleteModal.hide();
+            loadProveedores();
+            toastr.success('Proveedor eliminado con éxito');
+            // hideLoading();
+        })
+        .catch(handleFetchError);
+    }
+</script>
+<script src="{% static 'vendors/datatables/jquery.dataTables.js' %}"></script>
+<script src="{% static 'vendors/datatables/dataTables.bootstrap4.js' %}"></script>
+
+{% endblock %}
+

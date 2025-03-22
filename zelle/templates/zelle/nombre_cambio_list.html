@@ -1,0 +1,227 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Nombres de Cambio{% endblock %}
+
+{% block content %}
+<div class="row mb-3">
+    <div class="col">
+        <h1>Nombres de Cambio</h1>
+    </div>
+    <div class="col-auto">
+        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#nombreCambioModal">
+            Nuevo Nombre de Cambio
+        </button>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <table id="nombresCambioTable" class="table table-striped table-hover">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Nombre</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Los datos se cargarán mediante JavaScript -->
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Modal para Crear/Editar Nombre de Cambio -->
+<div class="modal fade" id="nombreCambioModal" tabindex="-1" aria-labelledby="nombreCambioModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="nombreCambioModalLabel">Nuevo Nombre de Cambio</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="nombreCambioForm">
+                    {% csrf_token %}
+                    <input type="hidden" id="nombreCambioId" value="">
+                    
+                    <div class="mb-3">
+                        <label for="nombre" class="form-label">Nombre</label>
+                        <input type="text" class="form-control" id="nombre" name="nombre" required>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary" id="saveNombreCambio">Guardar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de Confirmación para Eliminar -->
+<div class="modal fade" id="deleteModal" tabindex="-1" aria-labelledby="deleteModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="deleteModalLabel">Confirmar Eliminación</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>¿Está seguro que desea eliminar este nombre de cambio?</p>
+                <input type="hidden" id="deleteId" value="">
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-danger" id="confirmDelete">Eliminar</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let dataTable;
+    const nombreCambioModal = new bootstrap.Modal(document.getElementById('nombreCambioModal'));
+    const deleteModal = new bootstrap.Modal(document.getElementById('deleteModal'));
+    
+    // Inicializar DataTable
+    $(document).ready(function() {
+        dataTable = $('#nombresCambioTable').DataTable({
+            language: {
+                url: '{% static "js/es-ES.json" %}'
+            },
+            responsive: true,
+            columns: [
+                { data: 'id' },
+                { data: 'nombre' },
+                { 
+                    data: null,
+                    render: function(data, type, row) {
+                        return `
+                            <button class="btn btn-sm btn-warning edit-btn" data-id="${row.id}">Editar</button>
+                            <button class="btn btn-sm btn-danger delete-btn" data-id="${row.id}">Eliminar</button>
+                        `;
+                    }
+                }
+            ]
+        });
+        
+        // Cargar datos iniciales
+        loadNombresCambio();
+        
+        // Evento para guardar nombre de cambio
+        $('#saveNombreCambio').click(saveNombreCambio);
+        
+        // Evento para editar nombre de cambio
+        $('#nombresCambioTable').on('click', '.edit-btn', function() {
+            const id = $(this).data('id');
+            editNombreCambio(id);
+        });
+        
+        // Evento para eliminar nombre de cambio
+        $('#nombresCambioTable').on('click', '.delete-btn', function() {
+            const id = $(this).data('id');
+            $('#deleteId').val(id);
+            deleteModal.show();
+        });
+        
+        // Confirmar eliminación
+        $('#confirmDelete').click(function() {
+            const id = $('#deleteId').val();
+            deleteNombreCambio(id);
+        });
+        
+        // Limpiar modal al abrir para nuevo nombre de cambio
+        $('#nombreCambioModal').on('show.bs.modal', function(event) {
+            if (!$(event.relatedTarget).hasClass('edit-btn')) {
+                $('#nombreCambioForm').trigger('reset');
+                $('#nombreCambioId').val('');
+                $('#nombreCambioModalLabel').text('Nuevo Nombre de Cambio');
+            }
+        });
+    });
+    
+    // Función para cargar nombres de cambio
+    function loadNombresCambio() {
+        showLoading();
+        fetch('/api/nombres-cambio/')
+            .then(handleResponse)
+            .then(data => {
+                dataTable.clear();
+                dataTable.rows.add(data.results);
+                dataTable.draw();
+                hideLoading();
+            })
+            .catch(handleFetchError);
+    }
+    
+    // Función para guardar nombre de cambio (crear o actualizar)
+    function saveNombreCambio() {
+        const id = $('#nombreCambioId').val();
+        const formData = {
+            nombre: $('#nombre').val()
+        };
+        
+        showLoading();
+        
+        const url = id ? `/api/nombres-cambio/${id}/` : '/api/nombres-cambio/';
+        const method = id ? 'PUT' : 'POST';
+        
+        fetch(url, {
+            method: method,
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCSRFToken()
+            },
+            body: JSON.stringify(formData)
+        })
+        .then(handleResponse)
+        .then(data => {
+            nombreCambioModal.hide();
+            loadNombresCambio();
+            toastr.success(id ? 'Nombre de cambio actualizado con éxito' : 'Nombre de cambio creado con éxito');
+        })
+        .catch(handleFetchError);
+    }
+    
+    // Función para editar nombre de cambio
+    function editNombreCambio(id) {
+        showLoading();
+        fetch(`/api/nombres-cambio/${id}/`)
+            .then(handleResponse)
+            .then(data => {
+                nombreCambioModal.show();
+                $('#nombreCambioId').val(data.id);
+                $('#nombre').val(data.nombre);
+                
+                $('#nombreCambioModalLabel').text('Editar Nombre de Cambio');
+                hideLoading();
+            })
+            .catch(handleFetchError);
+    }
+    
+    // Función para eliminar nombre de cambio
+    function deleteNombreCambio(id) {
+        showLoading();
+        fetch(`/api/nombres-cambio/${id}/`, {
+            method: 'DELETE',
+            headers: {
+                'X-CSRFToken': getCSRFToken()
+            }
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Error al eliminar');
+            }
+            deleteModal.hide();
+            loadNombresCambio();
+            toastr.success('Nombre de cambio eliminado con éxito');
+            hideLoading();
+        })
+        .catch(handleFetchError);
+    }
+</script>
+{% endblock %}
+
